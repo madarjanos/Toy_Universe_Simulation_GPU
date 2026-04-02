@@ -5,10 +5,10 @@
  *
  * Created by Claude AI (claude.ai) based on an original C# implementation.
  *
- * New functions compared to earlier versions:
- *   nbody_get_params()        -- returns all runtime parameters
- *   nbody_download_full()     -- downloads all 7 arrays from GPU (for backup)
- *   nbody_init_from_arrays()  -- initialises GPU from loaded float arrays
+ * Acceleration arrays (ax/ay/az) are now included in nbody_download_full()
+ * and nbody_init_from_arrays() so that a backup/restore cycle preserves the
+ * full leapfrog state — without the accelerations the first half-kick after
+ * a restore would use zeros and produce incorrect results.
  */
 
 #define WIN32_LEAN_AND_MEAN
@@ -27,15 +27,15 @@
 /* -----------------------------------------------------------------------
  * Runtime parameters
  * --------------------------------------------------------------------- */
-static int   s_N         = 10000;
-static int   s_TILE      = 256;
-static float s_G         = 1.0f;
-static float s_DT        = 2e-6f;
-static float s_SOFT      = 1e-3f;
-static int   s_WRAPPED   = 1;
-static float s_EXPANSION = 20.0f;
-static unsigned long long s_SEED = 301;
-static char  s_CL_PATH[MAX_PATH] = "nbody_kernels.cl";
+static int                s_N         = 10000;
+static int                s_TILE      = 256;
+static float              s_G         = 1.0f;
+static float              s_DT        = 2e-6f;
+static float              s_SOFT      = 1e-3f;
+static int                s_WRAPPED   = 1;
+static float              s_EXPANSION = 20.0f;
+static unsigned long long s_SEED      = 301;
+static char               s_CL_PATH[MAX_PATH] = "nbody_kernels.cl";
 
 static float s_scale = 1.0f;
 
@@ -84,6 +84,9 @@ float *nbody_vx_f   = NULL;
 float *nbody_vy_f   = NULL;
 float *nbody_vz_f   = NULL;
 float *nbody_mass_f = NULL;
+float *nbody_ax_f   = NULL;
+float *nbody_ay_f   = NULL;
+float *nbody_az_f   = NULL;
 
 double *nbody_x    = NULL;
 double *nbody_y    = NULL;
@@ -159,13 +162,14 @@ static cl_float *d2f(const double *src, int n)
 }
 
 /* -----------------------------------------------------------------------
- * alloc_host_float_arrays — allocate (or reallocate) all 7 float arrays
+ * alloc_host_float_arrays — allocate all 10 host float arrays
  * --------------------------------------------------------------------- */
 static void alloc_host_float_arrays(int N)
 {
     free(nbody_x_f);    free(nbody_y_f);    free(nbody_z_f);
     free(nbody_vx_f);   free(nbody_vy_f);   free(nbody_vz_f);
     free(nbody_mass_f);
+    free(nbody_ax_f);   free(nbody_ay_f);   free(nbody_az_f);
 
     nbody_x_f    = (float *)malloc(N * sizeof(float));
     nbody_y_f    = (float *)malloc(N * sizeof(float));
@@ -174,15 +178,18 @@ static void alloc_host_float_arrays(int N)
     nbody_vy_f   = (float *)malloc(N * sizeof(float));
     nbody_vz_f   = (float *)malloc(N * sizeof(float));
     nbody_mass_f = (float *)malloc(N * sizeof(float));
+    nbody_ax_f   = (float *)malloc(N * sizeof(float));
+    nbody_ay_f   = (float *)malloc(N * sizeof(float));
+    nbody_az_f   = (float *)malloc(N * sizeof(float));
 
     if (!nbody_x_f||!nbody_y_f||!nbody_z_f||
-        !nbody_vx_f||!nbody_vy_f||!nbody_vz_f||!nbody_mass_f)
+        !nbody_vx_f||!nbody_vy_f||!nbody_vz_f||!nbody_mass_f||
+        !nbody_ax_f||!nbody_ay_f||!nbody_az_f)
     { fprintf(stderr, "alloc_host_float_arrays: out of memory\n"); exit(1); }
 }
 
 /* -----------------------------------------------------------------------
  * opencl_init — device selection, context, queue, kernel compilation
- * Shared by nbody_init() and nbody_init_from_arrays().
  * --------------------------------------------------------------------- */
 static void opencl_init(int N)
 {
@@ -265,25 +272,21 @@ static void opencl_init(int N)
 }
 
 /* -----------------------------------------------------------------------
- * gpu_upload_and_bind — upload particle arrays to GPU, set kernel args
- * Shared by nbody_init() and nbody_init_from_arrays().
+ * gpu_upload_and_bind — upload arrays to GPU and set kernel args
+ * ax/ay/az are uploaded from separate buffers (may be zeros or loaded).
  * --------------------------------------------------------------------- */
 static void gpu_upload_and_bind(int N,
-    cl_float *fx,   cl_float *fy,   cl_float *fz,
-    cl_float *fvx,  cl_float *fvy,  cl_float *fvz,
-    cl_float *fmass)
+    const cl_float *fx,   const cl_float *fy,   const cl_float *fz,
+    const cl_float *fvx,  const cl_float *fvy,  const cl_float *fvz,
+    const cl_float *fmass,
+    const cl_float *fax,  const cl_float *fay,  const cl_float *faz)
 {
     cl_int err;
     size_t fsz = (size_t)N * sizeof(cl_float);
 
-    /* Zero accelerations */
-    cl_float *fax = (cl_float *)calloc(N, sizeof(cl_float));
-    cl_float *fay = (cl_float *)calloc(N, sizeof(cl_float));
-    cl_float *faz = (cl_float *)calloc(N, sizeof(cl_float));
-
 #define MKBUF(var, ptr) \
     (var) = clCreateBuffer(s_ctx, \
-                CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, fsz, (ptr), &err); \
+                CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, fsz, (void*)(ptr), &err); \
     cl_check(err, "buf " #var)
 
     MKBUF(s_d_x,    fx);    MKBUF(s_d_y,    fy);    MKBUF(s_d_z,    fz);
@@ -291,8 +294,6 @@ static void gpu_upload_and_bind(int N,
     MKBUF(s_d_mass, fmass);
     MKBUF(s_d_ax,   fax);   MKBUF(s_d_ay,   fay);   MKBUF(s_d_az,   faz);
 #undef MKBUF
-
-    free(fax); free(fay); free(faz);
 
     cl_int n_cl = (cl_int)N;
 
@@ -360,23 +361,30 @@ void nbody_init(void)
     cl_float *fvy   = d2f(hvy,   N);
     cl_float *fvz   = d2f(hvz,   N);
     cl_float *fmass = d2f(hmass, N);
+    cl_float *fax   = (cl_float *)calloc(N, sizeof(cl_float));
+    cl_float *fay   = (cl_float *)calloc(N, sizeof(cl_float));
+    cl_float *faz   = (cl_float *)calloc(N, sizeof(cl_float));
 
-    memcpy(nbody_x_f, fx, N * sizeof(float));
-    memcpy(nbody_y_f, fy, N * sizeof(float));
-    memcpy(nbody_z_f, fz, N * sizeof(float));
+    memcpy(nbody_x_f,    fx,    N * sizeof(float));
+    memcpy(nbody_y_f,    fy,    N * sizeof(float));
+    memcpy(nbody_z_f,    fz,    N * sizeof(float));
     memcpy(nbody_vx_f,   fvx,   N * sizeof(float));
     memcpy(nbody_vy_f,   fvy,   N * sizeof(float));
     memcpy(nbody_vz_f,   fvz,   N * sizeof(float));
     memcpy(nbody_mass_f, fmass, N * sizeof(float));
+    memcpy(nbody_ax_f,   fax,   N * sizeof(float));
+    memcpy(nbody_ay_f,   fay,   N * sizeof(float));
+    memcpy(nbody_az_f,   faz,   N * sizeof(float));
 
     free(hx); free(hy); free(hz);
     free(hvx); free(hvy); free(hvz); free(hmass);
 
     opencl_init(N);
-    gpu_upload_and_bind(N, fx, fy, fz, fvx, fvy, fvz, fmass);
+    gpu_upload_and_bind(N, fx, fy, fz, fvx, fvy, fvz, fmass, fax, fay, faz);
 
     free(fx); free(fy); free(fz);
     free(fvx); free(fvy); free(fvz); free(fmass);
+    free(fax); free(fay); free(faz);
 
     printf("nbody_init: %d particles, tile=%d, expansion=%.2f — ready.\n",
            N, s_TILE, (double)s_EXPANSION);
@@ -384,11 +392,13 @@ void nbody_init(void)
 
 /* -----------------------------------------------------------------------
  * nbody_init_from_arrays — initialise GPU from loaded float data
+ * Accelerations are uploaded so the leapfrog state is fully restored.
  * --------------------------------------------------------------------- */
 void nbody_init_from_arrays(
-    const float *x,  const float *y,  const float *z,
-    const float *vx, const float *vy, const float *vz,
+    const float *x,   const float *y,   const float *z,
+    const float *vx,  const float *vy,  const float *vz,
     const float *mass,
+    const float *ax,  const float *ay,  const float *az,
     double time, double scale, int timestep)
 {
     int N = s_N;
@@ -409,26 +419,30 @@ void nbody_init_from_arrays(
     memcpy(nbody_vy_f,   vy,   N * sizeof(float));
     memcpy(nbody_vz_f,   vz,   N * sizeof(float));
     memcpy(nbody_mass_f, mass, N * sizeof(float));
+    memcpy(nbody_ax_f,   ax,   N * sizeof(float));
+    memcpy(nbody_ay_f,   ay,   N * sizeof(float));
+    memcpy(nbody_az_f,   az,   N * sizeof(float));
 
     opencl_init(N);
     gpu_upload_and_bind(N,
-        (cl_float *)x,    (cl_float *)y,    (cl_float *)z,
-        (cl_float *)vx,   (cl_float *)vy,   (cl_float *)vz,
-        (cl_float *)mass);
+        (const cl_float *)x,    (const cl_float *)y,    (const cl_float *)z,
+        (const cl_float *)vx,   (const cl_float *)vy,   (const cl_float *)vz,
+        (const cl_float *)mass,
+        (const cl_float *)ax,   (const cl_float *)ay,   (const cl_float *)az);
 
     printf("nbody_init_from_arrays: %d particles, step=%d, scale=%.4f — ready.\n",
            N, timestep, scale);
 }
 
 /* -----------------------------------------------------------------------
- * nbody_download_full — download all 7 arrays from GPU to host _f arrays
+ * nbody_download_full — download all 10 arrays from GPU
  * --------------------------------------------------------------------- */
 int nbody_download_full(void)
 {
     int    N   = s_N;
     size_t fsz = (size_t)N * sizeof(cl_float);
-
     cl_int err;
+
 #define RBF(dev, host) \
     err = clEnqueueReadBuffer(s_queue, (dev), CL_TRUE, \
               0, fsz, (host), 0, NULL, NULL); \
@@ -444,6 +458,9 @@ int nbody_download_full(void)
     RBF(s_d_vy,   nbody_vy_f);
     RBF(s_d_vz,   nbody_vz_f);
     RBF(s_d_mass, nbody_mass_f);
+    RBF(s_d_ax,   nbody_ax_f);
+    RBF(s_d_ay,   nbody_ay_f);
+    RBF(s_d_az,   nbody_az_f);
 #undef RBF
 
     return 1;
@@ -505,7 +522,6 @@ void nbody_dispose(void)
     int N = s_N;
     clFinish(s_queue);
 
-    /* Download to float arrays first, then convert to double */
     if (!nbody_download_full())
         fprintf(stderr, "nbody_dispose: warning — download failed\n");
 
@@ -546,6 +562,8 @@ void nbody_dispose(void)
     free(nbody_x_f);    free(nbody_y_f);    free(nbody_z_f);
     free(nbody_vx_f);   free(nbody_vy_f);   free(nbody_vz_f);
     free(nbody_mass_f);
+    free(nbody_ax_f);   free(nbody_ay_f);   free(nbody_az_f);
     nbody_x_f = nbody_y_f = nbody_z_f = NULL;
     nbody_vx_f = nbody_vy_f = nbody_vz_f = nbody_mass_f = NULL;
+    nbody_ax_f = nbody_ay_f = nbody_az_f = NULL;
 }
