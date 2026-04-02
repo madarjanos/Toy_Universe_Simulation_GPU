@@ -12,13 +12,11 @@
  *   4. nbody_dispose()          -- free GPU resources, populate double arrays
  *
  * Load from backup:
- *   1. nbody_set_params(...)    -- called internally by nbody_load_and_init
- *   2. nbody_init_from_arrays() -- called internally by nbody_load_and_init
- *   (use nbody_save.h / nbody_load_and_init instead of the above two)
+ *   (use nbody_save.h / nbody_load_and_init instead of the above)
  *
  * Backup support (used by nbody_save.c):
  *   nbody_get_params()      -- read back all runtime parameters
- *   nbody_download_full()   -- download all 7 arrays from GPU to _f arrays
+ *   nbody_download_full()   -- download all 10 arrays from GPU to _f arrays
  */
 
 #ifndef NBODY_SIMULATION_H
@@ -29,7 +27,7 @@ extern "C" {
 #endif
 
 /* -----------------------------------------------------------------------
- * Parameter bundle — used by nbody_get_params and nbody_save.c
+ * Parameter bundle
  * --------------------------------------------------------------------- */
 typedef struct nbody_params
 {
@@ -45,7 +43,7 @@ typedef struct nbody_params
 } nbody_params_t;
 
 /* -----------------------------------------------------------------------
- * Set simulation parameters — must be called before nbody_init().
+ * Set / get simulation parameters
  * --------------------------------------------------------------------- */
 void nbody_set_params(
     int                N,
@@ -59,7 +57,6 @@ void nbody_set_params(
     const char        *cl_path
 );
 
-/* Read back the currently active parameters (used by nbody_save). */
 void nbody_get_params(nbody_params_t *out);
 
 /* -----------------------------------------------------------------------
@@ -76,12 +73,15 @@ extern float *nbody_x_f;
 extern float *nbody_y_f;
 extern float *nbody_z_f;
 
-/* Host-side float arrays for ALL 7 quantities — valid after
- * nbody_download_full() (called by nbody_save). */
+/* Host-side float arrays for ALL 10 quantities — valid after
+ * nbody_download_full() (called by nbody_save before writing the file). */
 extern float *nbody_vx_f;
 extern float *nbody_vy_f;
 extern float *nbody_vz_f;
 extern float *nbody_mass_f;
+extern float *nbody_ax_f;   /* accelerations — needed for correct leapfrog resume */
+extern float *nbody_ay_f;
+extern float *nbody_az_f;
 
 /* Host-side double arrays — populated only after nbody_dispose(). */
 extern double *nbody_x;
@@ -104,23 +104,22 @@ void nbody_dispose(void);
  * --------------------------------------------------------------------- */
 
 /*
- * Download all 7 particle arrays (x,y,z,vx,vy,vz,mass) from GPU to the
- * nbody_*_f host arrays.  Does not disturb the GPU state; simulation can
- * continue after this call.
+ * Download all 10 particle arrays (x,y,z,vx,vy,vz,mass,ax,ay,az) from GPU
+ * to the nbody_*_f host arrays.  Does not disturb the GPU state.
  * Returns 1 on success, 0 on failure.
  */
 int nbody_download_full(void);
 
 /*
- * Initialise the simulation from pre-loaded float arrays instead of random
- * particles.  Called by nbody_load_and_init() in nbody_save.c after
- * nbody_set_params() has been called with the restored parameters.
- * Also restores time, scale and timestep.
+ * Initialise the simulation from pre-loaded float arrays.
+ * Called by nbody_load_and_init() after nbody_set_params().
+ * Also restores time, scale, timestep and accelerations.
  */
 void nbody_init_from_arrays(
-    const float *x,  const float *y,  const float *z,
-    const float *vx, const float *vy, const float *vz,
+    const float *x,   const float *y,   const float *z,
+    const float *vx,  const float *vy,  const float *vz,
     const float *mass,
+    const float *ax,  const float *ay,  const float *az,
     double time, double scale, int timestep
 );
 
