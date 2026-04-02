@@ -52,7 +52,7 @@ A sebességeket ezért kétszer kell csökkenteni: egyszer a fenti fizikai oka m
 Mikor számoljuk el a tágulás sebességre vett hatását?
 -
 
-A nehezebb probléma, hogy hol végezzük el a sebesség változtatását. Az N-test számítás lépései a HalfKick, Drift, Accelration számítás, második HalfKick.
+A nehezebb probléma, hogy hol végezzük el a sebesség változtatását. Az N-test számítás lépései a Half-Kick, Drift, Accelration számítás, második Half-Kick.
 (Ha nem tudod miért, akkor nézz után a szakirodalomban!)
 
 Ez azért probléma, mert ha a tágulás hatását (sebességek csökkentése) egy időlépés végén (vagy elején) hajtanánk végre,
@@ -72,31 +72,47 @@ de ez nem számít semmit se, mert nem befolyásolja a következő lépés half-
 GPU gyorsítás
 -
 
+A GPU gyorsítást OpenCL-lel oldottam meg. Ez egyszerű, és könnyen használható.
+
+Nagy előnye, hogy egyaránt van Intel, AMD és többféle videókártyához is. Az OpenCL-t fel kell telepíteni a gépre. Továbbá a fordításhoz kell a minimális SDK is; mint például a Khronos OpenCL SDK. (A fordításhoz majd meg kell adni, hogy hol van az SDK.)
+
+A GPU kernel függvények egy külön fájlban, a nbody_kernels.cl van. Ennek a fájlnak a program (nbodysim.exe) könyvtárában, vagyis az indításkori munkakönyvtárban kell lennie. Mert maga az a nbody_kernels.cl nem része a lefordított programnak, azt mindig a program induláskor tölti be a fájlból.
+
+A GPU gyorsítás igen nagy mértékben megnöveli a sebességet, különösen nagy részecskeszám (N) esetében. Még egy „mezei” processzorba épített GPU is x10-x100-szoros gyorsítás ér el a CPU-hoz képest. Egy komoly videókártya pedig még ennél is sokkal többet érhet el (bár nem teszteltem).
+
 Paraméterek
 -
 
 A programban van egy sor paraméter, amiket be kell állítani egy konkrét futás előtt.
 A legtöbb paraméter magáért beszél.
-Ami lényeges, hogy hogyan állítsuk be a G és DT és EXPANSION_FACTOR paramétereket.
+Ami lényeges, hogy hogyan állítsuk be a G és DT és EXPANSION paramétereket.
 A G és DT önmagában nem jelent semmit, hiszen a szimuláció dimenziómentesített (nincs mértékegység).
 Ezért nem az számít, hogy konkrétan mennyi a G, hanem a G és DT együtt számít (és valamennyire az N is).
 Ha G kicsi, akkor DT lehet nagyobb és fordítva.
 A lényeg az, hogy elég kicsi legyen a DT, hogy egy időlépésben csak kicsit gyorsuljanak és mozogjanak a részecskék.
-Valamennyire a SOFTENING is hatással van erre, azt se szabad túl kicsire beállítani, túl nagy meg nem lesz elég realisztikus.
+Valamennyire a SOFT (softening) is hatással van erre, azt se szabad túl kicsire beállítani, túl nagy meg nem lesz elég realisztikus.
 
 Tapasztalatom szerint pár ezer részecskeszámnál (N), ha a G=1, akkor DT néhányszor 1E-6 legyen.
 (Ha G csökken, akkor persze nőhet a DT, de ha nagyon sok részecske van, akkor a gravitációs hatás megnőhet,
 ha azok kis helyre koncentrálódnak, ezért nagy N esetén érdemes kisebb DT-t választani.)
 
-A tágulás lineáris, és a EXPANSION_FACTOR adja meg, hogy mennyit tágul egy időegység alatt.
-Tehát ha például DT=1E-6 és az EXPANSION_FACTOR=100, akkor egy időlépés (1E-6 időegység) alatt
+A tágulás lineáris, és a EXPANSION adja meg, hogy mennyit tágul egy időegység alatt.
+Tehát ha például DT=1E-6 és az EXPANSION=100, akkor egy időlépés (1E-6 időegység) alatt
 a tér 1E-4 távolságegységgel növekszik meg (fizikai szimulációs szempontból).
 
 Képek mentése (animáció)
 -
 
 Animációt direkt nem tud csinálni a program. Helyette PNG képekbe tudja lementeni az előállított 2D/3D renderelt frame-eket.
-A program adott időlépés után (steps paraméter) csinál egy új képet, amit megjelenít az ablakban,
-és user választása szerint lementi PNG fájlba is, adott mappába (outdir).
+A program adott időlépés után (STEPS paraméter) csinál egy új képet, amit megjelenít az ablakban,
+és user választása szerint lementi PNG fájlba is, adott mappába (outdir paraméter). A PNG képeket a Win32-es GDI+ rendszer könyvtárral generálja.
 
-A PNG képekből (frame0000.png, frame0001.png, …) videót valamilyen külső programmal lehet csinálni. Ajánlom az ingyenes mplayer-t (mencoder)!
+A PNG képekből (frame0000.png, frame0001.png, …) videót valamilyen külső programmal lehet csinálni.
+Ajánlom az ingyenes mplayer-t (mencoder)!
+
+GUI
+-
+
+Egyelőre egy közönséges ablak, és billentyű parancsokkal lehet vezérelni a megjelenítést, a képek mentését, stb. A program konzolba kiírja a billentyűparancsokat.
+Csak Windows alatt működik, meg egyszerű Win32-es GUI és GDI rendszer könyvtárakat használja. Így volt egyszerű.
+
