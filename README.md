@@ -80,16 +80,20 @@ A GPU kernel függvények egy külön fájlban, a nbody_kernels.cl van. Ennek a 
 
 A GPU gyorsítás igen nagy mértékben megnöveli a sebességet, különösen nagy részecskeszám (N) esetében. Még egy „mezei” processzorba épített GPU is x10-x100-szoros gyorsítás ér el a CPU-hoz képest. Egy komoly videókártya pedig még ennél is sokkal többet érhet el (bár nem teszteltem).
 
-Paraméterek
+Szimulációs paraméterek (konfiguráció)
 -
 
-A programban van egy sor paraméter, amiket be kell állítani egy konkrét futás előtt.
+A szimulációhoz tartozik egy sor paraméter, amiket be kell állítani egy konkrét futás előtt.
+Mindegyiknek van egy default értéke, ha a user nem adná meg.
+
 A legtöbb paraméter magáért beszél.
-Ami lényeges, hogy hogyan állítsuk be a G és DT és EXPANSION paramétereket.
+Ami érdekes kérdés lehet az az, hogy hogyan állítsuk be a G és DT és EXPANSION paramétereket?
 A G és DT önmagában nem jelent semmit, hiszen a szimuláció dimenziómentesített (nincs mértékegység).
 Ezért nem az számít, hogy konkrétan mennyi a G, hanem a G és DT együtt számít (és valamennyire az N is).
 Ha G kicsi, akkor DT lehet nagyobb és fordítva.
+
 A lényeg az, hogy elég kicsi legyen a DT, hogy egy időlépésben csak kicsit gyorsuljanak és mozogjanak a részecskék.
+
 Valamennyire a SOFT (softening) is hatással van erre, azt se szabad túl kicsire beállítani, túl nagy meg nem lesz elég realisztikus.
 
 Tapasztalatom szerint pár ezer részecskeszámnál (N), ha a G=1, akkor DT néhányszor 1E-6 legyen.
@@ -110,9 +114,24 @@ A program adott időlépés után (STEPS paraméter) csinál egy új képet, ami
 A PNG képekből (frame0000.png, frame0001.png, …) videót valamilyen külső programmal lehet csinálni.
 Ajánlom az ingyenes mplayer-t (mencoder)!
 
-GUI
+GUI és vezérlés
 -
 
-Egyelőre egy közönséges ablak, és billentyű parancsokkal lehet vezérelni a megjelenítést, a képek mentését, stb. A program konzolba kiírja a billentyűparancsokat.
-Csak Windows alatt működik, meg egyszerű Win32-es GUI és GDI rendszer könyvtárakat használja. Így volt egyszerű.
+A GUI egyelőre csak egy minimalista ablak, és billentyű parancsokkal lehet vezérelni a megjelenítést, a képek mentését, stb.
 
+A program konzolba kiírja a billentyűparancsokat, és a fontosabb információkat.
+
+Csak Windows alatt működik, meg a fapados Win32-es GUI és GDI rendszerkönyvtárakra épül az egész GUI és kép rajzolás.
+
+Futás közben lehet nagyítani, kicsinyíteni, és 3D-ben forgatni is. Ld. a billentyűparancsokat!
+
+Állapot mentése, visszatöltése
+-
+
+Lehetőség van menteni az aktuális állapotot (az egész szimulációt: szimulációs paraméterek, időlépés, részecskék helye, sebessége, stb.)
+futás közben bármikor egy bak fájlba adott billentyűparancsra ("B").
+
+A fájlt ugyanabba a könyvtárba menti, mint a PNG képeket (--outdir ..., ha nincs megadva most is az akt. munkakönyvtárba ment).
+
+Indításkor vissza lehet tölteni a bak fájlt, és ekkor a program ugyanott folytatja a szimulációt, ahol a mentés volt (--load).
+A vizuális beállítást (2D/3D, nagyítás, forgatás) nem menti el.
