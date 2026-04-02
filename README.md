@@ -104,6 +104,8 @@ A tágulás lineáris, és a EXPANSION adja meg, hogy mennyit tágul egy időegy
 Tehát ha például DT=1E-6 és az EXPANSION=100, akkor egy időlépés (1E-6 időegység) alatt
 a tér 1E-4 távolságegységgel növekszik meg (fizikai szimulációs szempontból).
 
+(A release-be beraktam pár példa bat fájlt, különféle esetekre.)
+
 Képek mentése (animáció)
 -
 
