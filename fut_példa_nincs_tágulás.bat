@@ -1,0 +1,1 @@
+nbodysim.exe --wrapped 1 --n 5000 --dt 2E-6 --steps 100 --g 1.0 --expansion 0.0 --randseed 301 --outdir .\png
