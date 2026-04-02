@@ -67,7 +67,7 @@ Mert úgyis teljesen új gyorsulásokat számolunk miután a tágulás sebesség
 
 Igaz, hogy magát a scale változót ténylegesen az időlépés végén növelem meg (a második HalfKick után);
 de ez nem számít semmit se, mert nem befolyásolja a következő lépés half-kick + drift-jét.
-(Azért tettem ide a kódban, mert a scale változtatása globális, nem osztható szét a thread-ek között, ahogy az idő növelése se.
+(Azért tettem ide a kódban, mert a scale változtatása globális, nem osztható szét a thread-ek között, ahogy az idő növelése se.)
 
 GPU gyorsítás
 -
