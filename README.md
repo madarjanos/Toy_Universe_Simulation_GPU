@@ -136,4 +136,4 @@ futás közben bármikor egy bak fájlba adott billentyűparancsra ("B").
 A fájlt ugyanabba a könyvtárba menti, mint a PNG képeket (--outdir ..., ha nincs megadva most is az akt. munkakönyvtárba ment).
 
 Indításkor vissza lehet tölteni a bak fájlt, és ekkor a program ugyanott folytatja a szimulációt, ahol a mentés volt (--load).
-A vizuális beállítást (2D/3D, nagyítás, forgatás) nem menti el.
+A vizuális beállítást (2D/3D, nagyítás, forgatás) is elmenti.
